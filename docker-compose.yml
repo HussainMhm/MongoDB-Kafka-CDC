@@ -1,16 +1,151 @@
 version: "3"
-
 services:
+    # Zookeeper service definition
     zookeeper:
-        image: wurstmeister/zookeeper
+        image: zookeeper
         container_name: zookeeper
-        ports:
-            - "2181:2181"
-    kafka:
-        image: wurstmeister/kafka
-        container_name: kafka
-        ports:
-            - "9092:9092"
         environment:
-            KAFKA_ADVERTISED_HOST_NAME: localhost
+            ZOOKEEPER_CLIENT_PORT: 2181
+            ZOOKEEPER_TICK_TIME: 2000
+
+    # Three separate Kafka broker services definition (kafka-1, kafka-2, kafka-3)
+    kafka-1:
+        image: confluentinc/cp-kafka:5.5.0
+        container_name: kafka-1
+        depends_on:
+            - zookeeper
+        ports:
+            - 9092:9092
+        environment:
+            # Below are the important kafka configurations
+            KAFKA_BROKER_ID: 1
             KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+
+    kafka-2:
+        image: confluentinc/cp-kafka:5.5.0
+        container_name: kafka-2
+        depends_on:
+            - zookeeper
+        ports:
+            - 9093:9092
+        environment:
+            # Below are the important kafka configurations
+            KAFKA_BROKER_ID: 2
+            KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+
+    kafka-3:
+        image: confluentinc/cp-kafka:5.5.0
+        container_name: kafka-3
+        depends_on:
+            - zookeeper
+        ports:
+            - 9094:9092
+        environment:
+            # Below are the important kafka configurations
+            KAFKA_BROKER_ID: 3
+            KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+
+    # Kafdrop service for Kafka UI
+    kafdrop:
+        image: obsidiandynamics/kafdrop:latest
+        container_name: kafdrop
+        depends_on:
+            - kafka-1
+        ports:
+            - 9000:9000
+        environment:
+            KAFKA_BROKERCONNECT: kafka-1:9092
+            SERVER_SERVLET_CONTEXTPATH: "/"
+
+    # Topic creation service
+    create_topic:
+        build:
+            context: ./create_topic
+            dockerfile: Dockerfile
+        depends_on:
+            - kafdrop
+        environment:
+            KAFKA_BROKERCONNECT: kafka-1:9092
+        restart: always
+        entrypoint: /bin/sleep infinity
+
+    # Producer service
+    producer:
+        build:
+            context: ./producer
+            dockerfile: Dockerfile
+        depends_on:
+            - kafdrop
+            - create_topic
+        environment:
+            KAFKA_BROKERCONNECT: kafka-1:9092
+        restart: always
+
+    # Consumer services (consumer1, consumer2, consumer3)
+    consumer1:
+        build:
+            context: ./consumer
+            dockerfile: Dockerfile
+        container_name: consumer-1
+        depends_on:
+            - kafdrop
+            - create_topic
+        environment:
+            KAFKA_BROKERCONNECT: kafka-1:9092
+            CONSUMER_ID: 1
+        restart: always
+
+    consumer2:
+        build:
+            context: ./consumer
+            dockerfile: Dockerfile
+        container_name: consumer-2
+        depends_on:
+            - kafdrop
+            - create_topic
+        environment:
+            KAFKA_BROKERCONNECT: kafka-2:9092
+            CONSUMER_ID: 2
+        restart: always
+
+    consumer3:
+        build:
+            context: ./consumer
+            dockerfile: Dockerfile
+        container_name: consumer-3
+        depends_on:
+            - kafdrop
+            - create_topic
+        environment:
+            KAFKA_BROKERCONNECT: kafka-3:9092
+            CONSUMER_ID: 3
+        restart: always
+
+    # MongoDB service
+    mongo:
+        image: mongo
+        volumes:
+            - mongo-data1:/data/configdb
+            - mongo-data1:/data/db
+        restart: always
+        ports:
+            - 27020:27017
+        container_name: "mongo"
+        logging:
+            driver: none
+
+volumes:
+    mongo-data1:
+        driver: local
