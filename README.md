@@ -9,7 +9,7 @@ This project develops two applications, a producer and a consumer. The producer 
 -   Apache Kafka
 -   ZooKeeper
 -   Kafdrop
--   MongoDB
+-   MongoDB: Used the Change Stream functionality to watch for changes.
 
 ## Build Steps
 
