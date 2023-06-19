@@ -24,4 +24,4 @@ After starting the Docker services, the producer and consumer applications will 
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE.md).
