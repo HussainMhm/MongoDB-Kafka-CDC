@@ -1,45 +1,46 @@
 import os
 from kafka import KafkaProducer
 from pymongo import MongoClient
+from pymongo.cursor import CursorType
 from time import sleep
 import socket
 
 # Kafka configuration
-kafka_topic = 'topic-x'
-kafka_bootstrap_servers = os.environ['KAFKA_BROKERCONNECT']
 myip = socket.gethostbyname(socket.gethostname())
+kafka_bootstrap_servers = os.environ['KAFKA_BROKERCONNECT']
+kafka_topic = 'topic-x'
 
 # Create a Kafka producer
 producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_servers)
 
-last_count = 0 
-count = 0
+# Connect to MongoDB
+client = MongoClient('mongodb://mongo:27017/')
+db = client["mydatabase"]
+collection = db["mycollection"]
 
-# Poll MongoDB and produce messages to Kafka
-while(1):
-    # Connect to MongoDB
-    client = MongoClient('mongodb://mongo:27017/')
-    db = client["mydatabase"]
-    collection = db["mycollection"]
+# Bonus: the MongoDB change stream feature implemented so 
+# no need to read files for changes every 10s
 
-    # Find all documents in collection and skip previously processed documents
-    cursor = collection.find({}, { "key": 1, "value": 1 }).skip(last_count)
-    count = collection.count_documents({}) - last_count
-    
-    for change in cursor:
-        # Convert the document to string format and send it to Kafka
-        message = str(change)  
-        producer.send(kafka_topic, value=message.encode('utf-8'))
-        producer.flush()
-        print("Message is sent:", change)
-        last_document = change
+# Initialize change stream
+change_stream = collection.watch(full_document='updateLookup')
 
-    # Update the count of processed documents
-    last_count += count
+# Start change stream
+try:
+    print("Watching for changes...")
+    for change in change_stream:
+        # We're interested in insert operations only
+        if change['operationType'] == 'insert':
+            # Get the full inserted document
+            document = change['fullDocument']
+            # Convert the document to string format and send it to Kafka
+            message = str(document)
+            producer.send(kafka_topic, value=message.encode('utf-8'))
+            producer.flush()
+            print("Message sent:", document)
+except KeyboardInterrupt:
+    print("\nStopped.")
 
-    # Close MongoDB connection and sleep for 10 seconds before next poll
-    client.close()   
-    sleep(10)
-    
-# Close the Kafka producer
-producer.close()
+finally:
+    # Close the MongoDB and Kafka connections
+    client.close()
+    producer.close()
